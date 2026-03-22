@@ -13,7 +13,10 @@ DB_FILE = "butce_verisi.json"
 def verileri_yukle():
     if os.path.exists(DB_FILE):
         with open(DB_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            try:
+                return json.load(f)
+            except:
+                return []
     return []
 
 def verileri_kaydet(kayitlar):
@@ -39,8 +42,9 @@ if st.sidebar.button("Kaydet"):
     st.session_state.veriler.append({"Tip": islem_tipi, "Kategori": kategori, "Miktar": miktar, "Not": not_ekle})
     verileri_kaydet(st.session_state.veriler)
     st.sidebar.success(f"{kategori} başarıyla eklendi!")
+    st.rerun()
 
-# --- ANA EKRAN: ANALİZ VE TAHMİN ---
+# --- ANA EKRAN: ANALİZ ---
 df = pd.DataFrame(st.session_state.veriler)
 
 if not df.empty:
@@ -51,63 +55,41 @@ if not df.empty:
     # 1. Özet Kartları
     c1, c2, c3 = st.columns(3)
     c1.metric("Toplam Gelir", f"{toplam_gelir:,.2f} TL")
-    c2.metric("Toplam Gider", f"{toplam_gider:,.2f} TL", delta=f"-{toplam_gider}", delta_color="inverse")
+    c2.metric("Toplam Gider", f"{toplam_gider:,.2f} TL")
     c3.metric("Mevcut Durum (Net)", f"{net_kalan:,.2f} TL")
 
-    # 2. ZEKİ TAHMİN MOTORU
-    st.divider()
-    st.subheader("🔮 Ay Sonu Tahmini & Birikim Analizi")
-    
-    col_tahmin, col_tavsiye = st.columns(2)
-    
-    with col_tahmin:
-        birikim_orani = (net_kalan / toplam_gelir * 100) if toplam_gelir > 0 else 0
-        st.write(f"**Mevcut Birikim Oranın:** %{birikim_orani:.1f}")
-        st.progress(min(max(birikim_orani / 100, 0.0), 1.0))
-        
-        if net_kalan > 0:
-            st.success(f"Bu hızla gidersen ay sonunda **{net_kalan:,.2f} TL** tasarruf etmiş olacaksın.")
-        else:
-            st.error("Dikkat! Harcamaların gelirini aşmış durumda.")
-
-    with col_tavsiye:
-        st.write("**Asistan Notu:**")
-        if birikim_orani < 20:
-            st.warning("Birikim oranın %20'nin altında. Harcamalarını gözden geçirebilirsin.")
-        else:
-            st.info("Harika gidiyorsun! Finansal sağlığın yerinde.")
-
-    # 3. GRAFİKLER VE LİSTE
+    # 2. Grafik ve Liste
     st.divider()
     g1, g2 = st.columns(2)
     with g1:
         st.subheader("📊 Gider Dağılımı")
         gider_df = df[df['Tip'] == 'Gider'].groupby('Kategori')['Miktar'].sum()
-        st.bar_chart(gider_df)
+        if not gider_df.empty:
+            st.bar_chart(gider_df)
     with g2:
         st.subheader("📑 Son İşlemler")
-        # Güncel Streamlit parametresi: width='stretch'
+        # HATALI KISIM BURADA DÜZELTİLDİ:
         st.dataframe(df.tail(10), width='stretch')
 
-    # 4. EXCEL AKTARMA VE SIFIRLAMA
+    # 3. Excel İndir ve Sıfırla
     st.divider()
-    # Excel oluşturma işlemi
+    col_down1, col_down2 = st.columns(2)
+    
+    # Excel Hazırlama
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Butce_Raporu')
+        df.to_excel(writer, index=False, sheet_name='Rapor')
     
-    col_down1, col_down2 = st.columns(2)
     col_down1.download_button(
         label="📥 Verileri Excel Olarak İndir",
         data=output.getvalue(),
-        file_name="butce_raporum.xlsx",
+        file_name="butce.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
     if col_down2.button("🗑️ Tüm Verileri Sıfırla"):
-        if st.checkbox("Gerçekten silmek istiyor musun?"):
-            st.session_state.veriler = []
-            verileri_kaydet([])
-            st.rerun()
+        verileri_kaydet([]) 
+        st.session_state.veriler = [] 
+        st.rerun() 
 else:
     st.info("Analiz yapabilmem için sol menüden veri girişi yapmalısın.")
