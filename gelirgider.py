@@ -22,7 +22,6 @@ def verileri_yukle():
                     return pd.DataFrame(columns=cols)
                 
                 df = pd.DataFrame(data)
-                # Tarihi güvenli şekilde çevir
                 df['Tarih'] = pd.to_datetime(df['Tarih'], errors='coerce')
                 df = df.dropna(subset=['Tarih'])
                 return df
@@ -33,12 +32,12 @@ def verileri_yukle():
 def verileri_kaydet(df):
     df_to_save = df.copy()
     if not df_to_save.empty:
-        # JSON'a kaydederken tarihi metne çeviriyoruz
+        # Tarih formatını JSON için stringe çevir
         df_to_save['Tarih'] = df_to_save['Tarih'].dt.strftime('%Y-%m-%d')
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(df_to_save.to_dict('records'), f, ensure_ascii=False, indent=4)
 
-# Başlangıçta veriyi session_state'e al
+# Başlangıçta session_state kontrolü
 if 'df' not in st.session_state:
     st.session_state.df = verileri_yukle()
 
@@ -56,7 +55,7 @@ miktar = st.sidebar.number_input("Miktar (TL)", min_value=0.0, step=10.0)
 not_ekle = st.sidebar.text_input("Not")
 
 if st.sidebar.button("Kaydet"):
-    yeni_satir = {
+    yeni_data = {
         "Tarih": pd.to_datetime(tarih_input), 
         "Tip": islem_tipi, 
         "Kategori": kategori, 
@@ -64,30 +63,31 @@ if st.sidebar.button("Kaydet"):
         "Not": not_ekle
     }
     
-    # FutureWarning almamak için liste üzerinden güncelleme
-    veriler = st.session_state.df.to_dict('records')
-    veriler.append(yeni_satir)
-    st.session_state.df = pd.DataFrame(veriler)
+    # FutureWarning almamak için liste üzerinden ekleme yapıyoruz
+    current_data = st.session_state.df.to_dict('records')
+    current_data.append(yeni_data)
+    st.session_state.df = pd.DataFrame(current_data)
     
     verileri_kaydet(st.session_state.df)
     st.sidebar.success("İşlem başarıyla kaydedildi!")
     st.rerun()
 
-# --- SIFIRLAMA BÖLÜMÜ ---
+# --- SIFIRLAMA ---
 st.sidebar.divider()
 st.sidebar.subheader("⚙️ Veri Yönetimi")
-onay_kutusu = st.sidebar.checkbox("Tüm verileri silmeyi onaylıyorum")
+onay_kutusu = st.sidebar.checkbox("Verileri silmeyi onaylıyorum")
 if st.sidebar.button("🗑️ TÜM VERİLERİ SİL", type="primary", disabled=not onay_kutusu):
     st.session_state.df = pd.DataFrame(columns=["Tarih", "Tip", "Kategori", "Miktar", "Not"])
     verileri_kaydet(st.session_state.df)
     st.sidebar.warning("Tüm veriler temizlendi!")
     st.rerun()
 
-# --- ANA EKRAN VE FİLTRELEME ---
+# --- ANA EKRAN ---
 if not st.session_state.df.empty:
     st.write("### 🔍 Verileri Filtrele")
     col_f1, col_f2 = st.columns(2)
 
+    # Yılları ve ayları güvenle çek
     yillar = sorted(st.session_state.df['Tarih'].dt.year.unique(), reverse=True)
     secili_yil = col_f1.selectbox("Yıl Seçin", yillar)
 
@@ -134,18 +134,18 @@ if not st.session_state.df.empty:
             st.subheader("📑 İşlem Listesi")
             temp_df = filtreli_df.copy()
             temp_df['Tarih'] = temp_df['Tarih'].dt.strftime('%d.%m.%Y')
-            # İsteğin üzerine width='stretch' eklendi
             st.dataframe(temp_df.sort_values('Tarih', ascending=False), width='stretch')
 
-        # Excel Aktar
+        # Excel Aktarma
         output = BytesIO()
         try:
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 filtreli_df.to_excel(writer, index=False, sheet_name='Butce')
-            st.download_button("📥 Excel Raporunu İndir", output.getvalue(), f"butce_{secili_ay_ad}_{secili_yil}.xlsx")
+            excel_data = output.getvalue()
+            st.download_button("📥 Excel Raporunu İndir", excel_data, f"butce_{secili_ay_ad}_{secili_yil}.xlsx")
         except:
-            st.error("Excel oluşturulurken bir hata oluştu (xlsxwriter eksik olabilir).")
+            st.error("Excel oluşturulurken bir hata oluştu. Lütfen 'xlsxwriter' kütüphanesinin yüklü olduğundan emin olun.")
     else:
         st.warning(f"⚠️ {secili_ay_ad} {secili_yil} dönemi için henüz kayıt bulunamadı.")
 else:
-    st.info("👋 Hoş geldiniz! Sol panelden bütçe işlemlerinizi girmeye başlayabilirsiniz.")
+    st.info("👋 Hoş geldiniz! Sol panelden ilk işleminizi ekleyerek bütçenizi yönetmeye başlayın.")
